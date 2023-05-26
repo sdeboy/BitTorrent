@@ -17,7 +17,8 @@ class Peer:
         self.ip = peer['ip'] if isinstance(peer, dict) else '.'.join(str(c) for c in peer[0:4])
         self.port = peer['port'] if isinstance(peer, dict) else int(peer[4]) << 8 | int(peer[5])
         self.peer_id = None
-        self.choked = True
+        self.peer_choked = True
+        self.my_choked = True
         self.interested = False
         self.reader = None
         self.writer = None
@@ -29,13 +30,11 @@ class Peer:
 
     # attempts to make connection with peer
     async def connect(self):
-        print("connecting to "+str(self.ip)+":"+str(self.port))
         t = asyncio.open_connection(self.ip, self.port)
         try:
             self.reader, self.writer = await asyncio.wait_for(t, timeout=10)
         except:
             raise
-        print("connected to "+str(self.ip)+":"+str(self.port))
 
     # attempts to send handshake with peer
     async def handshake(self, info_hash, peer_id):
@@ -47,8 +46,9 @@ class Peer:
         except:
             raise
         # TODO: verify fields appropriately
-        pstrlen, pstr, reserved, info_hash, self.peer_id = struct.unpack(
-            "!B19s8s20s20s", r)        
+        _, _, _, _, self.peer_id = struct.unpack(
+            "!B19s8s20s20s", r)
+        
 
     # closes connection
     async def close(self):
@@ -61,11 +61,11 @@ class Peer:
     # reads next incoming message
     async def read_msg(self):
         try:
-            msg_len: int = 0
+            msg_len = 0
             while msg_len == 0:
-                msg_len = int.from_bytes(await reader.readexactly(4), "big")
-            msg: bytes = await self.readexactly(msg_len)
-            return message.class_from_bytes(msg)
+                msg_len = int.from_bytes(await self.reader.readexactly(4), "big")
+            msg = await self.readexactly(msg_len)
+            return message.class_from_bytes(msg, msg_len)
         except:
             raise
 
