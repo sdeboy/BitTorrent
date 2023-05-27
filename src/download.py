@@ -17,6 +17,7 @@ async def start(torrent, manager, my_id, port):
         # connect to each peer and follow protocol
         tasks = [asyncio.create_task(progress(manager))]
         for peer in peers.peers:
+            manager.add_peer(my_id)
             tasks.append(asyncio.create_task(handle_peer(
                 peer, torrent, my_id, manager)))
         await asyncio.gather(*tasks, return_exceptions=False)
@@ -37,8 +38,6 @@ async def progress(manager):
 
 # bittorrent protocol for each peer
 async def handle_peer(peer, torrent, my_id, manager):
-    manager.add_peer(my_id)
-    
     # attempts connection
     try:
         await peer.connect()
@@ -91,6 +90,8 @@ async def handle_peer(peer, torrent, my_id, manager):
             case 'UNCHOKE':
                 peer.my_choked = False
             case 'INTERESTED':
+                print("INTERESTED PEER")
+                print()
                 peer.interested = True
                 peer.peer_choked = False
             case 'NOT_INTERESTED':

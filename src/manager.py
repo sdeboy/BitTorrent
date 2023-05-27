@@ -9,7 +9,6 @@ class Manager:
         self.total_pieces = len(torrent.info.pieces)//20
         # bit fields
         self.peer_bitfield = {}
-        self.swarm_bitfield = [0]*self.total_pieces
         self.our_bitfield = [False]*self.total_pieces
         # queue of acquired pieces to later send
         self.have_msg_list = {}
@@ -66,7 +65,7 @@ class Manager:
 
     def get_random_pending(self):
         try:
-            return random.choice(self.pending_pieces)
+            return random.choice(self.pending_pieces)[1]
         except:
             return None
             
@@ -114,9 +113,7 @@ class Manager:
             print("error reading file")
         
     def have_piece(self, val):
-        if self.our_bitfield[val]:
-            return True
-        return False
+        return self.our_bitfield[val]
         
     def download_done(self):
         if self.left == 0:
