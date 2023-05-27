@@ -9,7 +9,7 @@ class Manager:
         self.total_pieces = len(torrent.info.pieces)//20
         # bit fields
         self.peer_bitfield = {}
-        self.our_bitfield = bytearray(self.total_pieces)
+        self.our_bitfield = [False]*self.total_pieces
         # queue of acquired pieces to later send
         self.have_msg_list = {}
         #
@@ -26,7 +26,7 @@ class Manager:
 
     # add bitfield to peer
     def add_bitfield(self, peer_id, bitfield):
-            self.peer_bitfield[peer_id] = bitfield
+        self.peer_bitfield[peer_id] = bitfield
         
     # add newly downloaded to have message lists
     # if piece doesn't have it
@@ -53,7 +53,7 @@ class Manager:
     # Updating in response to Have message
     def update_peer(self, peer_id, index):
         if peer_id in self.peer_bitfield:
-            self.peer_bitfield[peer_id].add_piece(index)
+            self.peer_bitfield[peer_id][index] = True
 
     def get_random_pending(self):
         try:
@@ -65,7 +65,7 @@ class Manager:
     def next_request(self, peer_id):
         try:
             for i, piece_num in enumerate(self.queue):
-                if self.peer_bitfield[peer_id].has_piece(piece_num):
+                if self.peer_bitfield[peer_id][piece_num]:
                     self.pending_pieces.append(self.queue[i])
                     return self.queue.pop(i)
             return -1
@@ -80,11 +80,11 @@ class Manager:
         self.queue.append(index)
 
     async def write_piece(self, piece, index):
-        if self.our_bitfield[index] != 1:
+        if not self.our_bitfield[index]:
             try:
                 self.download_file.seek(index*self.torrent.info.piecelength)
                 self.download_file.write(piece)
-                self.our_bitfield[index] = 1
+                self.our_bitfield[index] = True
                 self.downloaded += len(piece)
                 self.left -= len(piece)
                 self.add_to_have_list(index)
@@ -107,7 +107,7 @@ class Manager:
             print("error reading file")
         
     def have_piece(self, val):
-        if (self.our_bitfield[val] == 1):
+        if self.our_bitfield[val]:
             return True
         return False
         

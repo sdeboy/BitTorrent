@@ -1,5 +1,4 @@
 from typing import List
-from bitfield import Bitfield
 import struct
 # interpret bytestream to messages and the converse
 
@@ -29,17 +28,15 @@ class HaveMessage(Message):
         return super().__str__()+f", INDEX: {self.piece_index}"
     def get_extra(self):
         return struct.pack("!I", self.piece_index)
-        
+
 class BitfieldMessage(Message):
     def __init__(self, bits: bytes):
         super().__init__('BITFIELD')
-        self.bitfield: Bitfield = Bitfield(bits)
+        self.bitfield: List[bool] = [(byte & (1<<(7-bit))) > 0 for byte in bits for bit in range(8)]
         self.length_prefix: int = 1 + len(bits)
     def __str__(self):
         return super().__str__()
-    def get_extra(self):
-        return self.bitfield.raw_bytes
-
+    
 class RequestMessage(Message):
     def __init__(self, index: int, begin: int, length: int):
         super().__init__('REQUEST')
