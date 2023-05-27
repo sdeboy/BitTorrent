@@ -60,6 +60,7 @@ async def handle_peer(peer, torrent, my_id, manager):
             except:
                 return
             requesting = -1
+            
         # if file has finished downloading, return
         if manager.download_done():
             try:
@@ -83,46 +84,48 @@ async def handle_peer(peer, torrent, my_id, manager):
         except Exception:
             # timeout case
             continue
-        
+
+        # match message and response appropriately
         match msg.msg_type:
             case 'CHOKE':
                 peer.my_choked = True
             case 'UNCHOKE':
+                # free to send piece requests
                 peer.my_choked = False
             case 'INTERESTED':
-                print("INTERESTED PEER")
-                print()
+                # peer may request pieces from us
                 peer.interested = True
                 peer.peer_choked = False
             case 'NOT_INTERESTED':
                 peer.interested = False
                 peer.peer_choked = True
             case 'BITFIELD':
+                # we find what pieces peer has, and send our interest in seeding
                 peer.bitmap_received = True
                 manager.add_bitfield(peer.peer_id, msg.bitfield)
                 await peer.send_interested()
             case 'REQUEST':
-                print("GOT BLOCK REQUEST")
-                print()
+                # sends the requested piece block if we have it
                 if not peer_choked and manager.have_piece(msg.piece_index):
                     try:
-                        block = await manager.read_block(msg.piece_index,
-                                                     msg.block_offset, msg.length)
+                        block = manager.read_block(msg.piece_index,
+                                                   msg.block_offset, msg.length)
                         await peer.send_block(msg.piece_index, msg.block_offset, block)
                     except:
                         print("error sending block to client")
                         print()
                         continue        
             case 'HAVE':
+                # peer has gained another piece, update their bitfield
                 manager.update_peer(peer.peer_id, msg.piece_index)
             case 'PIECE':
-                # received another block of the piece
+                # received a block of the piece, store in the block array
                 blocks[msg.begin//MAX_BYTES] = msg.block
                 blocks_received += 1
-                # have all blocks of the piece
+                # enter if we have all blocks of the piece
                 if (blocks_received == MAX_BLOCKS):
                     piece = b"".join(blocks)
-                    # verify step
+                    # verify piece hash
                     i = (requesting*20)
                     realhash = torrent.info.pieces[i:i+20]
                     sha1 = hashlib.sha1()
@@ -137,7 +140,8 @@ async def handle_peer(peer, torrent, my_id, manager):
                     blocks_received = 0
                     requesting = -1
             case _:
-                print('OTHER MESSAGE')
+                # unknown message, end peer connection
+                return
 
         # send piece request if we meet requirements
         if (not peer.my_choked) and peer.bitmap_received and requesting == -1:
@@ -153,5 +157,5 @@ async def handle_peer(peer, torrent, my_id, manager):
             except:
                 manager.return_to_queue(block_info)
                 continue                                        
-            # update piece being requested for book-keeping
+            # update piece tracker for book-keeping
             requesting = block_info

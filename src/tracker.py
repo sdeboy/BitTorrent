@@ -1,5 +1,5 @@
-import bencode, socket, requests, logging
-from peer import PeerData, Peer
+import bencode, requests
+from peer import PeerData
 
 # this file handles communication with tracker list
 def announce(torrent, peer_id, uploaded, downloaded, left, event, port):

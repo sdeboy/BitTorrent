@@ -1,6 +1,5 @@
 import hashlib, bencode
-
-# defines torrent and info classes for convenient storage and printing
+# torrent and info classes for convenient storage and printinga
 
 class Torrent:
     def __init__(self, torrent):

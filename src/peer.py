@@ -5,6 +5,7 @@ import message
 # 2^14 is max byte amount that can be requested
 MAX_BYTES = 16384
 
+# PeerData/Peer based off dict from bencode
 class PeerData:
     def __init__(self, response):
             self.interval = response['interval']
@@ -54,7 +55,6 @@ class Peer:
             r = await self.readexactly(68)            
         except:
             raise
-        # TODO: verify fields appropriately
         _, _, _, _, self.peer_id = struct.unpack(
             "!B19s8s20s20s", r)
         
@@ -69,7 +69,7 @@ class Peer:
         except:
             raise
 
-    # send message class
+    # send the given Message class
     async def send_msg(self, msg):
         try:
             await self.write(msg.get())
@@ -77,7 +77,7 @@ class Peer:
         except:
             raise
 
-    # various message types to send
+    # message types to send
     async def send_interested(self):
         try:
             await self.send_msg(message.Message('INTERESTED'))
@@ -99,6 +99,7 @@ class Peer:
     async def send_request(self, index, length):
         offset = 0
         try:
+            # must request piece in 2^14 size blocks
             while offset < length:
                 chunk_size = min(MAX_BYTES, length - offset)
                 msg = message.RequestMessage(index, offset, chunk_size)
@@ -115,7 +116,7 @@ class Peer:
             raise
         
 
-    # basic wrappers for reader/writer
+    # wrappers for reader/writer
     async def write(self, msg):
         try:
             self.writer.write(msg)
@@ -133,6 +134,7 @@ class Peer:
 # HELPER  FUNCTIONS #
 # # # # # # # # # # #
 
+# generates list from the http response
 def generate_list(peer_data):
     if isinstance(peer_data, bytes):
         return [Peer(peer_data[6*x:6*x+6]) for x in range(int(len(peer_data)/6))]
@@ -142,6 +144,7 @@ def generate_list(peer_data):
             list.append(Peer(peer_data[i]))
         return list
 
+# helps print the peer list
 def peer_list_str(list):
     s = ""
     for i in range(len(list)):
