@@ -31,6 +31,9 @@ if not os.path.exists(download_path):
         os.makedirs(download_path)
 # send install location to rest of program
 with open(download_path+"/"+torrent.info.name, 'w+b') as download_file:
+        print(f"downloading {torrent.info.name}")
+        print(f"  to: {download_path}")
+        print(f"  from: {torrent.announce}")
         manager = Manager(torrent, download_file)
         # start torrent program with given parameters
         asyncio.run(start(torrent, manager, my_id, port))

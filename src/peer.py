@@ -36,6 +36,15 @@ class Peer:
         except:
             raise
 
+    # closes connection
+    async def close(self):
+        try:
+            self.writer.close()
+            await self.writer.wait_closed()
+        except:
+            print("error during close")
+            raise            
+
     # attempts to send handshake with peer
     async def handshake(self, info_hash, peer_id):
         handshake = struct.pack("!B19s8s20s20s", 19, b"BitTorrent protocol",
@@ -49,15 +58,6 @@ class Peer:
         _, _, _, _, self.peer_id = struct.unpack(
             "!B19s8s20s20s", r)
         
-
-    # closes connection
-    async def close(self):
-        try:
-            self.writer.close()
-            await self.writer.wait_closed()
-        except:
-            print("error during close")
-            
     # reads next incoming message
     async def read_msg(self):
         try:
@@ -90,6 +90,12 @@ class Peer:
         except:
             raise
         
+    async def send_have(self, index):
+        try:
+            await self.send_msg(message.HaveMessage(index))
+        except:
+            raise
+
     async def send_request(self, index, length):
         offset = 0
         try:
@@ -99,9 +105,15 @@ class Peer:
                 await self.send_msg(msg)
                 offset += chunk_size
         except:
-            print("Error sending piece requests")
             raise
 
+    async def send_piece(self, index, offset, block):
+        try:
+            await self.send_msg(
+                message.PieceMessage(index, offset, block))
+        except:
+            raise
+        
 
     # basic wrappers for reader/writer
     async def write(self, msg):
@@ -117,15 +129,13 @@ class Peer:
         except:
             raise
         
-        
-
 # # # # # # # # # # #
 # HELPER  FUNCTIONS #
 # # # # # # # # # # #
 
 def generate_list(peer_data):
     if isinstance(peer_data, bytes):
-        return [Peer(peer_data[6*x:6*x+6]) for x in range(int(len(peer_data) / 6))]
+        return [Peer(peer_data[6*x:6*x+6]) for x in range(int(len(peer_data)/6))]
     else:
         list = []
         for i in range(len(peer_data)):

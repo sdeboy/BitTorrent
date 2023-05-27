@@ -1,27 +1,54 @@
 import asyncio, random
 # tracks download file information
+
 class Manager:
     def __init__(self, torrent, download_file):
+        # general torrent info
         self.torrent = torrent
         self.download_file = download_file
-        self.download_complete = False
-        self.peer_bitfield = {}
         self.total_pieces = len(torrent.info.pieces)//20
+        # bit fields
+        self.peer_bitfield = {}
         self.our_bitfield = bytearray(self.total_pieces)
+        # queue of acquired pieces to later send
+        self.have_msg_list = {}
+        #
         self.pending_pieces = []
         self.queue = list(range(self.total_pieces))
+        # how much has been downloaded/uploaded
         self.uploaded = 0
         self.downloaded = 0
         self.left = torrent.info.length
 
-    # add peer to dict
-    def add_peer(self, peer_id, bitfield):
-        self.peer_bitfield[peer_id] = bitfield
+    # add peer have_msg dict
+    def add_peer(self, peer_id):
+        self.have_msg_list[peer_id] = []
 
+    # add bitfield to peer
+    def add_bitfield(self, peer_id, bitfield):
+            self.peer_bitfield[peer_id] = bitfield
+        
+    # add newly downloaded to have message lists
+    # if piece doesn't have it
+    def add_to_have_list(self, index):
+        for k, v in self.have_msg_list.items():
+            v.append(index)
+        
+    # get have message list
+    def get_have_list(self, peer_id):
+        try:
+            have_list = self.have_msg_list[peer_id]
+            self.have_msg_list = []
+            return have_list
+        except:
+            return []
+        
     # delete peer from dict
     def remove_peer(self, peer_id):
         if peer_id in self.peer_bitfield:
             del self.peer_bitfield[peer_id]
+        if peer_id in self.have_msg_list:
+            del self.have_msg_list[peer_id]
 
     # Updating in response to Have message
     def update_peer(self, peer_id, index):
@@ -60,6 +87,7 @@ class Manager:
                 self.our_bitfield[index] = 1
                 self.downloaded += len(piece)
                 self.left -= len(piece)
+                self.add_to_have_list(index)
             except:
                 print("error writing piece")
                 return
@@ -84,15 +112,12 @@ class Manager:
         return False
         
     def download_done(self):
-        if self.download_complete:
+        if self.left == 0:
             return True
-        for i in self.our_bitfield:
-            if i == 0:
-                return False
-        self.download_complete = True
-        return True
+        return False
 
     # gives percentage of download done
     def progress(self):
         return sum(self.our_bitfield)/self.total_pieces
         
+    

@@ -11,9 +11,6 @@ MAX_BYTES = 16384
 async def start(torrent, manager, my_id, port):
     # request new peerlist if existing one is not working
     while not manager.download_done():
-        # print address
-        print(f"downloading from: {torrent.announce}")
-        print(torrent.announce)
         peers = announce(torrent, my_id, 0, 0,
                          torrent.info.length, "started", port)
         
@@ -24,26 +21,30 @@ async def start(torrent, manager, my_id, port):
                 peer, torrent, my_id, manager)))
         await asyncio.gather(*tasks, return_exceptions=False)
     # done
-    peers = announce(torrent, my_id, 0, torrent.info.length,
-                     0, "stopped", port)
-    print("download complete")
+    peers = announce(torrent, my_id, manager.uploaded,
+                     manager.downloaded, manager.left, "stopped", port)
+    print(f"  downloaded: {manager.downloaded} bytes")
+    print(f"  uploaded: {manager.uploaded} bytes")
+
 
 # print progress message intermittently
 async def progress(manager):
-    print("starting download")
     while not manager.download_done():
         await asyncio.sleep(1)
-        # print(f"progress: {manager.progress()}", end='\r')
+        print("progress: {0:.0%}".format(manager.progress()), end='\r')
     print()
     
 
 # bittorrent protocol for each peer
 async def handle_peer(peer, torrent, my_id, manager):
+    manager.add_peer(my_id)
+    
     # attempts connection
     try:
         await peer.connect()
         await peer.handshake(torrent.info_hash, my_id)
     except:
+        manager.remove_peer(my_id)
         return
 
     # variables to track blocks of each piece
@@ -55,13 +56,25 @@ async def handle_peer(peer, torrent, my_id, manager):
     while True:
         # if piece downloaded from another peer, cancel request
         if requesting != -1 and manager.have_piece(requesting):
-            await peer.send_cancel()
+            try:
+                await peer.send_cancel()
+            except:
+                return
             requesting = -1
         # if file has finished downloading, return
         if manager.download_done():
-            await peer.close()
-            return
+            try:
+                await peer.close()
+            finally:
+                return
 
+        # check if there are any have messages to send
+        for i in manager.get_have_list(my_id):
+            try:
+                await peer.send_have(i)
+            except:
+                return
+            
         # wait for message
         try:
             msg = await asyncio.wait_for(peer.read_msg(), timeout=5.0)
@@ -71,7 +84,6 @@ async def handle_peer(peer, torrent, my_id, manager):
         except Exception:
             # timeout case
             continue
-        print(f"got message {msg}")
         
         match msg.msg_type:
             case 'CHOKE':
@@ -86,17 +98,19 @@ async def handle_peer(peer, torrent, my_id, manager):
                 peer.peer_choked = True
             case 'BITFIELD':
                 peer.bitmap_received = True
-                manager.add_peer(peer.peer_id, msg.bitfield)
+                manager.add_bitfield(peer.peer_id, msg.bitfield)
                 await peer.send_interested()
             case 'REQUEST':
-                if not my_choked and manager.have_piece(msg.piece_index):
-                    block = await manager.read_block(msg.piece_index,
-                                                     msg.block_offset, msg.length)
+                print("GOT BLOCK REQUEST")
+                print()
+                if not peer_choked and manager.have_piece(msg.piece_index):
                     try:
-                        await peer.send(PieceMessage(msg.piece_index,
-                                                     msg.block_offset, block))
+                        block = await manager.read_block(msg.piece_index,
+                                                     msg.block_offset, msg.length)
+                        await peer.send_block(msg.piece_index, msg.block_offset, block)
                     except:
                         print("error sending block to client")
+                        print()
                         continue        
             case 'HAVE':
                 manager.update_peer(peer.peer_id, msg.piece_index)
