@@ -1,4 +1,6 @@
 BitTorrent Client
 
-FORMAT TO RUN:
+command to run:
 ./main.py [torrent file] [download path]
+
+
