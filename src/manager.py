@@ -1,4 +1,4 @@
-import asyncio, random
+import asyncio, random, copy
 # tracks download file information
 
 class Manager:
@@ -9,12 +9,14 @@ class Manager:
         self.total_pieces = len(torrent.info.pieces)//20
         # bit fields
         self.peer_bitfield = {}
+        self.swarm_bitfield = [0]*self.total_pieces
         self.our_bitfield = [False]*self.total_pieces
         # queue of acquired pieces to later send
         self.have_msg_list = {}
-        #
+        # holds information on pieces to download
         self.pending_pieces = []
-        self.queue = list(range(self.total_pieces))
+        self.queue = list(zip([0]*self.total_pieces,
+                          range(self.total_pieces)))
         # how much has been downloaded/uploaded
         self.uploaded = 0
         self.downloaded = 0
@@ -23,25 +25,6 @@ class Manager:
     # add peer have_msg dict
     def add_peer(self, peer_id):
         self.have_msg_list[peer_id] = []
-
-    # add bitfield to peer
-    def add_bitfield(self, peer_id, bitfield):
-        self.peer_bitfield[peer_id] = bitfield
-        
-    # add newly downloaded to have message lists
-    # if piece doesn't have it
-    def add_to_have_list(self, index):
-        for k, v in self.have_msg_list.items():
-            v.append(index)
-        
-    # get have message list
-    def get_have_list(self, peer_id):
-        try:
-            have_list = self.have_msg_list[peer_id]
-            self.have_msg_list = []
-            return have_list
-        except:
-            return []
         
     # delete peer from dict
     def remove_peer(self, peer_id):
@@ -55,6 +38,32 @@ class Manager:
         if peer_id in self.peer_bitfield:
             self.peer_bitfield[peer_id][index] = True
 
+    # add bitfield to peer
+    def add_bitfield(self, peer_id, bitfield):
+        self.peer_bitfield[peer_id] = bitfield
+        for i, bit in enumerate(bitfield):
+            for j, pair in enumerate(self.queue):
+                if i == pair[1]:
+                    self.queue[j] = (self.queue[j][0]+1,
+                                     self.queue[j][1])
+                    continue
+        self.queue.sort(key=lambda i:(i[0],
+                                      random.randrange(64)))
+        
+    # add newly downloaded to have message lists
+    def add_to_have_list(self, index):
+        for k, v in self.have_msg_list.items():
+            v.append(index)
+        
+    # get have message list
+    def get_have_list(self, peer_id):
+        try:
+            have_list = self.have_msg_list[peer_id]
+            self.have_msg_list = []
+            return have_list
+        except:
+            return []
+
     def get_random_pending(self):
         try:
             return random.choice(self.pending_pieces)
@@ -64,21 +73,19 @@ class Manager:
     # determine what the next request will be for given peer
     def next_request(self, peer_id):
         try:
-            for i, piece_num in enumerate(self.queue):
-                if self.peer_bitfield[peer_id][piece_num]:
-                    self.pending_pieces.append(self.queue[i])
-                    return self.queue.pop(i)
+            for i, piece in enumerate(self.queue):
+                if self.peer_bitfield[peer_id][piece[1]]:
+                    self.pending_pieces.append(piece)
+                    return self.queue.pop(i)[1]
             return -1
         except: 
             print("error with piece queue")
 
     def return_to_queue(self, index):
-        try:
-            self.pending_pieces.remove(val)
-        except:
-            return
-        self.queue.append(index)
-
+        piece = self.remove_from_pending_list(index)
+        if piece:        
+            self.queue.append(piece)
+            
     async def write_piece(self, piece, index):
         if not self.our_bitfield[index]:
             try:
@@ -92,7 +99,7 @@ class Manager:
                 print("error writing piece")
                 return
             try:
-                self.pending_pieces.remove(index)
+                self.remove_from_pending_list(index)
             except:
                 return
 
@@ -116,8 +123,15 @@ class Manager:
             return True
         return False
 
+    def remove_from_pending_list(self, index):
+        for piece in self.pending_pieces:
+            if piece[1] == index:
+                self.pending_pieces.remove(piece)
+                return piece
+        return None
+
+    
     # gives percentage of download done
     def progress(self):
         return sum(self.our_bitfield)/self.total_pieces
-        
-    
+
